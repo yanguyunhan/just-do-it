@@ -1,0 +1,147 @@
+# 本代码旨在根据已有的信用卡欺诈数据，通过逻辑回归进行分类，
+# 并对数据进行预测，最后用准确率来衡量分类效果
+
+import pandas as pd
+import numpy as np
+
+# 获取数据
+
+
+def get_data(filename):
+    data = pd.read_csv(filename)
+    return data
+
+
+# 数据预处理
+def data_clean(data):
+    # 将数据进行归一化
+    data['normAmount'] = (data['Amount']-data['Amount'].min())/(data['Amount'].max()-data['Amount'].min())
+    # 去除数据中不需要的列
+    data = data.drop(['Time', 'Amount'], axis=1)
+    # 随机选取和class=1相等数量的class=0的行
+    # 把class列和其他列分开
+    X = data.ix[:, data.columns != 'Class']
+    y = data.ix[:, data.columns == 'Class']
+    # 得到class=1的数量
+    number_records_fraud = len(data[data.Class == 1])
+    # 得到class=0和class=1的索引
+    fraud_indices = np.array(data[data.Class == 1].index)
+    normal_indices = data[data.Class == 0].index
+    # 随机选取class=0的索引，数量和class=1的一样
+    random_normal_indices = np.random.choice(normal_indices, number_records_fraud, replace=False)
+    random_normal_indices = np.array(random_normal_indices)
+    # 将选好后的两类数据的索引拼在一起并得到干净的数据
+    under_sample_indices = np.concatenate([fraud_indices, random_normal_indices])
+    data = data.iloc[under_sample_indices,:]
+
+    return data
+
+
+# 建立Logistic回归分类器
+
+# 建立sigmoid函数
+
+def sigmoid(z):
+        return 1.0 / (1 + np.exp(-z))
+
+# 将数据转换为矩阵，并得到X(特征)和y(class)
+
+
+# 建立logistic模型
+def model(x, theta):
+    return sigmoid(np.dot(x, theta.T))
+
+# 利用梯度下降找到最佳回归系数
+# 先确定损失函数
+def cost(x, y, theta):
+    left = np.multiply(-y, np.log(model(x, theta)))
+    right = np.multiply(1 - y, np.log(1 - model(x, theta)))
+    return np.sum(left - right) / (len(x))
+
+
+# 计算梯度
+def gradient(x, y, theta):
+    grad = np.zeros(theta.shape)
+    error = (model(x, theta) - y).ravel()
+    for j in range(len(theta.ravel())):
+        term = np.multiply(error, x[:, j])
+        grad[0,j] = np.sum(term) / len(x)
+
+    return grad
+
+
+# 对数据进行洗牌，避免数据具有规律性
+def shuffleData(data):
+    np.random.shuffle(data)
+    cols = data.shape[1]
+    x = data[:, 0:cols-1]
+    y = data[:, cols-1:]
+    return x, y
+
+# 梯度下降求最佳theta，可以利用限制迭代次数等方式
+
+
+def descent(data, theta, batchsize, alpha, thresh):
+    i = 0
+    k = 0
+    x, y = shuffleData(data)
+    # grad = np.zeros(theta.shape)
+    costs = [cost(x, y, theta)]
+
+    while True:
+        grad = gradient(x[k:k+batchsize], y[k:k+batchsize], theta)
+        k += batchsize  # 取batch数量个数据
+        if k >= n:
+            k = 0
+            x, y = shuffleData(data)
+        theta = theta - alpha * grad
+        costs.append(cost(x, y, theta))
+        i += 1
+        if i > thresh:
+            break
+    return theta, i-1, costs, grad
+
+
+def runExpe(data, theta, batchsize, thresh, alpha):
+    theta, iternumber, costs, grad = descent(data, theta, batchsize, alpha, thresh)
+    return theta
+
+
+# 设定阈值
+def predict(x, theta):
+    return [1 if m >= 0.5 else 0 for m in model(x, theta)]
+
+
+# 利用测试文件对模型效果进行检验（准确率）
+filename = "D:/creditcard.csv"
+data = get_data(filename)
+clean_data = data_clean(data)
+clean_data.insert(0, 'Ones', 1)
+# 把最后两列进行调换
+a = clean_data['normAmount']
+clean_data.drop(labels=['normAmount'],axis=1, inplace=True)
+clean_data.insert(29, 'normAmount', a)
+# 将数组转为矩阵
+orig_data = np.mat(clean_data)
+cols = orig_data.shape[1]
+x = orig_data[:, 0:cols - 1]
+y = orig_data[:, cols - 1:cols]
+# 赋予必要参数初值
+theta = np.zeros([1,x.shape[1]])
+thresh = 5000
+n = 120
+alpha = 0.001
+# 得到theta值已得到预测值
+theta = runExpe(orig_data, theta, n, thresh, alpha)
+predictions = predict(x, theta)
+# 得到准确率
+correct = [1 if ((a == 1 and b == 1) or (a == 0 and b == 0)) else 0 for (a, b) in zip(predictions, y)]
+a=0
+b=0
+for item in correct:
+    if item == 1:
+        a += 1
+    else:
+        b+=1
+accuracy = a / (b+a)
+print('accuracy = {:.2%}'.format(accuracy))
