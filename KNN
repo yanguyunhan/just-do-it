@@ -1,0 +1,113 @@
+import pandas as pd
+import numpy as np
+#from sklearn.cross_validation import train_test_split
+import operator
+
+# 获取数据
+
+
+filename = "D:/datingTestSet.txt"
+def file2matrix(filename):
+    fr = open(filename)
+    arrayoflines = fr.readlines()
+    numberoflines = len(arrayoflines)
+    returnmat = np.zeros((numberoflines,3))
+    classlabelvector = []
+    index = 0
+    for line in arrayoflines:
+        line = line.strip()
+        listfromline = line.split('\t')
+        c = listfromline[:3]
+        for item in c:
+            num1 = float(item)
+        returnmat[index, :] = num1
+        if listfromline[-1] == 'didntLike':
+            listfromline[-1] = 1
+        elif listfromline[-1] == 'smallDoses':
+            listfromline[-1] = 2
+        else:
+            listfromline[-1] = 3
+        classlabelvector.append(int(listfromline[-1]))
+        index += 1
+    fr.close()
+    return returnmat, classlabelvector
+
+
+# 数据预处理
+# 把各特征的数值归一化为[-1,1]
+def norm_data(data):
+    minvals = data.min(0)
+    maxvals = data.max(0)
+    ranges = maxvals - minvals
+    normdata = np.zeros(data.shape)
+    m = data.shape[0]
+    normdata = data - np.tile(minvals, (m, 1))
+    normdata = normdata / np.tile(ranges, (m, 1))
+
+    return normdata, ranges, minvals
+
+
+#将数据划分为训练集和检验集
+#def split(data):
+#    train,test = train_test_split(data, test_size = 0.3)
+#    return train,test
+
+# K-近邻算法
+def classify(intX, dataset, labels, k):
+    # 计算要预测的点与其余点的距离
+    datasetsize = dataset.shape[0]
+    distance = np.tile(intX, (datasetsize, 1)) - dataset
+    squaredistance = np.square(distance)
+    sumdistance = squaredistance.sum(axis=1)
+    distances = np.sqrt(sumdistance)
+    # 对这些点按距离从小到大排列选出K个点
+    sortsqrtdistance = distances.argsort()
+    classcount = {}
+    for i in range(k):
+        votelabel = labels[sortsqrtdistance[i]]
+        classcount[votelabel] = classcount.get(votelabel, 0) + 1
+        sortedclasscount = sorted(classcount.items(), key=operator.itemgetter(1), reverse=True)
+    return sortedclasscount[0][0]
+
+
+
+# 统计K个点分别属于的类别的数量
+
+# 属于哪个分类的点的数量最大，就把该预测点的类别判别为该类
+
+
+# 进行KNN算法
+def datingclasstest():
+    horatio = 0.10
+    datingdatmat, datinglabels = file2matrix(filename)
+    normmat = norm_data(datingdatmat)
+    normmat = np.array(normmat)
+    m = normmat.shape[0]
+    numtestvecs = int(m * horatio)
+    errorcount = 0.0
+    for i in range(numtestvecs):
+        classifierresult = classify(normmat[i, :], normmat[numtestvecs:m, :], datinglabels[numtestvecs:m], 3)
+        print("the classifier came back with: %d,the real answer is: %d" % (classifierresult, datinglabels[i]))
+        if (classifierresult != datinglabels[i]):
+            errorcount += 1.0
+    print("the total error rate is: %f" % (errorcount / float(numtestvecs)))
+
+
+# 约会网站预测函数
+def classifyperson():
+    resultlist = ['not at all', 'in small doses', 'in large doses']
+    percentTats = float(input("percentage of time spent playing video games?"))
+    ffmiles = float(input("frequent flier miles earned per year?"))
+    icecream = float(input("liters of ice cream consumed per year?"))
+    datingdatmat, datinglabels = file2matrix(filename)
+    normmat, ranges, minvals = norm_data(datingdatmat)
+    list = []
+    list.append(ffmiles)
+    list.append(percentTats)
+    list.append(icecream)
+    inarr = np.array(list)
+    classifierresult = classify((inarr - minvals) / ranges, normmat, datinglabels, 3)
+    print("You will probably like this person:",resultlist[classifierresult - 1])
+
+#classifyperson()
+datingclasstest()
