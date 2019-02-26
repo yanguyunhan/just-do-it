@@ -1,0 +1,245 @@
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*- 
+# @Time : 2019/1/24 20:57 
+# @Author : 路飞敲代码
+# @Site :  
+# @File : 聚类.py 
+# @Software: PyCharm
+
+from numpy import *
+
+# 聚类支持函数
+def loadDataSet(filename):
+    dataMat = []
+    fr = open(filename).readlines()
+    for line in fr:
+        curLine = line.strip().split('\t')
+        Line = []
+        for item in curLine:
+            fltLine = float(item)
+            Line.append(fltLine)
+        dataMat.append(Line)
+    return dataMat
+
+# 计算两个向量之间的距离，使用欧氏距离
+def distEclud(vecA, vecB):
+    return sqrt(sum(power(vecA - vecB, 2)))
+
+
+def randCent(dataSet, k):
+    '''
+    该函数为给定的数据集创建一个包含k个随机质心的集合
+    :param dataSet: 数据集
+    :param k: 要创建的质心的个数
+    :return: 创建得到的质心集合
+    '''
+    # 数据集的列数，即特征数量
+    n = dataSet.shape[1]
+    # 初始化创建一个k*n的全零矩阵，表示随机质心有k个，每个质心都是n维
+    centroids = mat(zeros((k, n)))
+    # 遍历所有特征
+    for j in range(n):
+        # 得到每一特征列的最小值
+        minJ = min(dataSet[:, j])
+        # 用每一列的最大值减去最小值得到特征列的范围
+        rangeJ = float(max(dataSet[:,j]) - minJ)
+        # 用numpy.random.rand(m,n)函数产生一个形状为m*n的[0,1]的随机数
+        #再乘上范围加上最小值得到在每一列上的一个随机数，这个随机数位于这一列最小值最大值之间
+        centroids[:, j] = minJ + rangeJ * random.rand(k, 1)
+    return centroids
+
+
+def KMeans(dataSet, k, distMeans=distEclud, createCent=randCent):
+    '''
+    K-均值聚类方法，创建k个质心，然后将每个点分配到最近的质心，再重新计算质心
+    我这一开始有n个点，遍历数据集，计算每个样本点到这些点的距离，找到那个距离最小的
+    质心后，把这个样本归到这个质心类中，遍历完后，把这些归到一个质心的样本点找出来
+    计算他们的各个特征的均值，将这个各特征的均值构成的向量作为新的质心，重新分配
+    所有样本点，再次遍历所有样本点，计算到新质心的距离，把这些样本点重新分配到新的簇中，
+    如果所有样本点所属的质心类
+    没有变，则结束循环，这些质心即为最终的分类质心，反之继续进行更新，在遍历样本点的时候，将他们所属的
+    质心和与质心的距离放在一个列表中作为记录，之后将这个列表中的点所属质心的记录与新得到
+    的质心作比较，如果没有变，就可以证明所有数据所属质心类没有变，结束聚类算法
+
+    K-均值算法有时会收敛到局部最小值
+
+    :param dataSet: 数据集
+    :param k: 簇的数目
+    :param distMeans: 计算距离的方法
+    :param createCent: 得到初始质心的方法
+    :return: 得到
+    '''
+    # 获得数据集的样本数
+    m = dataSet.shape[0]
+    # 初始化一个m*2的全零矩阵作为簇分配结果矩阵，包含两列：一列记录簇索引值，第二列存储误差，
+    # 误差就是当前点到质心的距离
+    clusterAssment = mat(zeros((m, 2)))
+    # 初始化k个质心
+    centroids = createCent(dataSet, k)
+    # 聚类结果是否发生变化的布尔类型变量
+    clusterChanged = True
+    # 只要聚类结果一直发生变化，就一直执行聚类算法，直到所有数据点聚类结果不发生变化
+    while clusterChanged:
+        # 聚类结果变化布尔类型置为False
+        clusterChanged = False
+        # 遍历所有样本
+        for i in range(m):
+            # 将最小距离置于无穷大
+            minDist = inf; minIndex = -1
+            # 遍历所有质心
+            for j in range(k):
+                # 计算数据点到质心的距离，对于质心矩阵的每一行和数据集的每一个样本点计算距离
+                distJI = distMeans(centroids[j, :], dataSet[i, :])
+                # 如果计算得到的距离比最小距离小
+                if distJI <minDist:
+                    # 将最小距离替换为当前计算的距离，
+                    # 最小距离的索引为当前距离最小的质心的索引
+                    minDist = distJI; minIndex = j
+            # 如果这个样本点对应的簇分配结果的簇索引值不是最小距离索引
+            if clusterAssment[i, 0] != minIndex:
+                # 要继续对聚类结果进行改变
+                clusterChanged = True
+            # 将这个不是最小距离索引的索引值赋值为minIndex，误差值赋值为最小距离的平方
+            # 上面已经把第j个质心的索引给了minIndex，在这一步把第i个样本点
+            # 在结果划分簇的索引赋值为minIndex，即质心j
+            clusterAssment[i, :] = minIndex, minDist**2
+        # 输出质心
+        print(centroids)
+        # 遍历所有质心并更新他们的取值
+        for cent in range(k):
+            # 将数据集中所有属于当前质心类的样本过滤筛选出来
+            # .A将矩阵转化为数组
+            ptsInClust = dataSet[nonzero(clusterAssment[:, 0].A==cent)[0]]
+            # 计算这些数据的均值(axis=0，计算列的均值),作为该类的质心
+            centroids[cent, :] = mean(ptsInClust, axis=0)
+    return centroids, clusterAssment
+
+
+def biKeans(dataSet, k, distMeans=distEclud):
+    '''
+    二分 K-均值算法首先将所有点作为一个簇，然后将该簇一分为二，之后选择其中一个簇
+    继续进行划分，选择哪一个簇进行划分取决于对其划分是否可以最大程度降低SSE的值
+    上述基于SSE的划分不断重复，知道得到用户指定的簇数目为止
+    首先创建一个矩阵来存储数据集中每个点的簇分配结果及平方误差，然后计算整个数据集的
+    质心，并用一个列表来保存所有的质心
+    接下来进入while循环，对簇不断进行划分。遍历所有的簇来决定最佳的簇来进行划分
+    为此需要比较划分前后的SSE。一开始将最小SSE设为无穷大，然后遍历簇列表centList
+    中的每一个簇。对于每一个簇，将该簇中所有点看成一个小数据集ptsInCurrCluster。
+    将这个小数据集放入K-Means函数进行k=2的划分，K-Means算法会生成两个质心(簇)，同时给出
+    每个簇的误差值，这些误差与剩余数据集的误差之和作为本次划分的误差，如果该划分
+    的SSE值最小，则保留这次划分。然后实际执行划分操作，即对将要划分的簇中所有点的
+    簇分配结果进行修改。
+    KMeans()中有k个质心，在结果划分簇中就有0-(k-1)的编号
+    当使用KMeans()函数并指定簇数为2时，会得到两个编号为0和1的结果簇，需要将这些簇编号
+    修改为划分簇和新加簇的编号，最后，新的簇分配结果被更新，新的质心被添加到
+    centList中。
+    一开始所有数据点作为一个簇，然后运行k=2的K-Means算法得到两个簇，簇0和簇1，然后分别对
+    簇0和簇1进行K-Means算法，这时看簇0和簇1划分后的总SSE谁的小，比如簇1划分后总的SSE小，那
+    簇0就不动，对簇1进行划分，得到簇1和簇2，这时一共有三个簇0,1,2，如果没到用户指定的
+    簇数目，就对这三个簇分别进行K-Means算法，然后比较这三者之间的SSE，再选出最小SSE的
+    簇进行划分，得到簇3，不断循环进行，直达得到用户指定的数目。
+
+    二分 K-均值算法可以收敛到全局最小值
+
+    :param dataSet: 数据集
+    :param k: 期望的簇数目
+    :param distMeans: 距离计算方法
+    :return: 聚类结果
+    '''
+    # 得到数据集的样本数
+    m = dataSet.shape[0]
+    # 把聚类结果初始化为一个m*2的全零矩阵
+    clusterAssment = mat(zeros((m, 2)))
+    # 得到全部样本的每一个特征的平均值组成的向量，然后把这个向量作为初始质心
+    centroid0 = list(mean(dataSet, axis=0))[0]
+    # 初始化只有一个质心的列表
+    centList = [centroid0]
+    # 遍历所有样本点
+    for j in range(m):
+        # 同KMeans算法中clusterAssment中一样，第二列是样本点到归属簇的质心的距离的平方
+        clusterAssment[j, 1] = distMeans(mat(centroid0), dataSet[j, :])**2
+    # 当质心的数量少于用户设定的数量时，运行算法
+    while(len(centList) < k):
+        # 初始化最小的误差为无穷小
+        lowestSSE = inf
+        # 遍历质心列表
+        for i in range(len(centList)):
+            # 选取一些样本点，这些点是在簇分配结果矩阵中质心索引=第一个质心类的非零元素的行索引对应的点
+            ptsInCurrCluster = dataSet[nonzero(clusterAssment[:, 0].A == i)[0], :]
+            # 在给定的簇上对这些点进行K-Means聚类(k=2)
+            centroidMat, splitClusAss = KMeans(ptsInCurrCluster, 2, distMeans)
+            # 计算这些点和质心的距离的和，即该簇一分为二之后的误差
+            sseSplit = sum(splitClusAss[:, 1])
+            # 计算数据集中不属于该簇的点的误差
+            # 比如上一步是对簇0进行划分，簇1就是剩下的点，也有个误差
+            sseNotSplit = sum(clusterAssment[nonzero(clusterAssment[:, 0].A != i)[0], 1])
+            # print("seeSplit, and notSplit: ",sseSplit, sseNotSplit)
+            # 如果上面两者的总误差比目前的误差小，就是要使得所有样本点的SSE加起来最小
+            if (sseSplit + sseNotSplit) < lowestSSE:
+                # 那么目前进行簇划分的最好的簇就是该簇
+                bestCentToSplit = i
+                bestNewCents = centroidMat
+                # 第i类进行K-Means划分得到的两个质心向量
+                bestClustAss = splitClusAss.copy()
+                # 将最小误差更新为上面两者的总误差
+                lowestSSE = sseSplit +sseNotSplit
+        # 数组过滤筛选出本次2-均值聚类划分后编号为1的数据点，将这些数据点的索引
+        # 变为类个数加一，作为一个新的类别
+        # len(list)正好比list的最后一个元素的索引值大一
+        # 将簇划分结果矩阵的第一列(样本点所属类的索引)赋值为现有的簇的索引加一
+        # 这样就实现了类个数加一
+        bestClustAss[nonzero(bestClustAss[:, 0].A == 1)[0], 0] = len(centList)
+        # 把划分数据集中类索引为0的数据点的类索引仍置于被划分的类索引
+        bestClustAss[nonzero(bestClustAss[:, 0].A == 0)[0], 0] = bestCentToSplit
+        # 打印划分采用的划分簇
+        print('the bestCentToSplit is: ', bestCentToSplit)
+        print('the len of bestClusAss is: ', len(bestClustAss))
+        # 更新质心列表
+        centList[bestCentToSplit] = bestNewCents[0, :]
+        centList.append(bestNewCents[1, :])
+        clusterAssment[nonzero(clusterAssment[:, 0].A == bestCentToSplit)[0], :] = bestClustAss
+    return mat(centList), clusterAssment
+
+
+# 对地理坐标进行聚类
+# 球面距离计算及簇绘图函数
+def distSLC(vecA, vecB):
+    a = sin(vecA[0, 1]*pi / 180) * sin(vecB[0, 1]*pi / 180)
+    b = cos(vecA[0, 1]*pi / 180) * cos(vecB[0, 1]*pi / 180) * cos(pi * (vecB[0, 0] - vecA[0, 0]) / 180)
+    return arccos(a + b)*6371.0
+
+import matplotlib
+import matplotlib.pyplot as plt
+
+def clusterClubs(numClust=5):
+    datList = []
+    for line in open(filePath).readlines():
+        lineArr = line.split('\t')
+        datList.append([float(lineArr[4]), float(lineArr[3])])
+    datMat = mat(datList)
+    myCentroids,clustAssing = biKeans(datMat, numClust, distMeans=distSLC)
+    fig = plt.figure()
+    rect = (0.1, 0.1, 0.8, 0.8)
+    scatterMarkers = ['s', 'o', '^', '8', 'p', 'd', 'v', 'h', '>', '<']
+    axprops = dict(xsticks=[], ysticks=[])
+
+
+
+
+
+
+filePath ="D:/ML/portlandClubs.txt"
+
+filename = "D:/ML/testSet2.txt"
+dataMat = loadDataSet(filename)
+dataMat = mat(dataMat)
+# myCentroids, clustAssing = KMeans(dataMat, 4)
+# print(myCentroids, clustAssing)
+centList, myNewAssments = biKeans(dataMat, 3)
+# print(centList)
+# print(dataMat)
+# print(mat(dataMat))
+# print(min(dataMat[:, 0]))
+# randCents = randCent(dataMat, 2)
+# print(randCents)
+# print(distEclud(dataMat[0], dataMat[1]))
