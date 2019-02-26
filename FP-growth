@@ -1,0 +1,179 @@
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*- 
+# @Time : 2019/1/29 10:48 
+# @Author : 路飞敲代码
+# @Site :  
+# @File : FP-growth.py 
+# @Software: PyCharm
+
+
+'''
+FP树的构建需要遍历两遍数据集。第一遍遍历得出频繁项组成的集合，并得到它们的支持度
+计数，频繁项的集合按支持度计数的递减序排序，例如L={{I2:7},{I1:6},{I3:6},{I4:2},{I5:2}}
+然后构建FP树，首先，构建树的根结点，用Null标记，然后每个事务中的项都按L中的次序
+处理，并对每个事务创建一个分支，例如，第一个事务，T100：I1,I2,I5，包含三个项，按
+L中的次序为I2,I1,I5，导致构造树的三个结点的第一个分支<I2:1>I1:1<I5:1>，其中I2作为
+根的子女链接到根，I1链接到I2，I5链接到I1。第二个事务T200按L的次序包含项I2和I4，它导致
+一个分支，其中I2链接到根，I4链接到I2，然而，该分支应当与T100已存在的路径共享前缀
+I2，因此，将I2的计数加一，并创建一个新的结点<I4:1>,它作为子女链接到<I2：2>
+'''
+
+# 创建FP树的数据结构
+class treeNode:
+    def __init__(self, nameValue, numOccur, parentNode):
+        # 存放节点名字
+        self.name = nameValue
+        # 计数值
+        self.count = numOccur
+        # 用于链接相似的元素项
+        self.nodeLink = None
+        # 使用父变量指向当前节点的父节点
+        self.parent = parentNode
+        # 存放节点的子节点
+        self.children = {}
+    # 对count变量增加给定值
+    def inc(self, numOccur):
+        self.count += numOccur
+    # 用于将树以文本形式显示
+    def disp(self, ind=1):
+        print('  '*ind, self.name, '  ', self.count)
+
+
+
+def loadSimpleData():
+    simpData = [['r', 'z', 'h', 'j', 'p'],
+                ['z', 'y', 'x', 'w', 'v', 'u', 't', 's', 'z'],
+                ['z'],
+                ['r', 'x', 'n', 'o', 's'],
+                ['y', 'r', 'x', 'z', 'q', 't', 'p'],
+                ['y', 'z', 'x', 'e', 'q', 's', 't', 'm']]
+    return simpData
+
+
+def createInitSet(dataSet):
+    retDict = {}
+    for trans in dataSet:
+        retDict[frozenset(trans)] = 1
+    return retDict
+
+
+
+def createTree(dataSet, minSup=1):
+    # 初始化一个头指针表
+    headerTable = {}
+    # 遍历数据集，这个数据集也是一个字典，数据集是由事务组成的，每一个事务又是由许多元素组成的
+    for trans in dataSet:
+        # 遍历一个事务
+        for item in trans:
+            # 如果这个元素没有在头指针表中，则get()得到0，在这基础上加上dataSet中这个事务的值1
+            # 如果这个元素已经在头指针表中，则get()得到目前已记下的数加上这个事务在字典中的值1
+            headerTable[item] = headerTable.get(item, 0) + dataSet[trans]
+    # 至此已经得到所有元素的频数，遍历所有头指针表的key
+    for k in headerTable.keys():
+        # 如果这个元素的频数小于最小支持度
+        if headerTable[k] < minSup:
+            # 删去这个元素，得到的会是一个频繁项集
+            del(headerTable[k])
+    # 将头指针表的元素的相同项只表示一次
+    freqItemSet = set(headerTable.keys())
+    # 如果所有项都不频繁，就不需要进行下一步处理
+    if len(freqItemSet) == 0: return None, None
+    # 拓展头指针表，第一个元素保存计数，第二个元素指向第一个元素项
+    for k in headerTable:
+        # 改变头指针表的格式来使用NodeLink
+        headerTable[k] = [headerTable[k], None]
+    # 开始构建FP树,根节点用null标记
+    retTree = treeNode('Null Set', 1, None)
+    # 第二次遍历数据集
+    for tranSet, count in dataSet.items():
+        localD = {}
+        # 遍历事务
+        for item in tranSet:
+            # 如果元素是频繁项集里面的
+            if item in freqItemSet:
+                # 将这个元素及其支持度放入localD字典中
+                localD[item] = headerTable[item][0]
+        # 如果localD不为空
+        if len(localD) > 0:
+            # 将localD按照支持度进行排序，然后输出排序后的元素组成的列表
+            orderItems = [v[0] for v in sorted(localD.items(), key=lambda p: p[1],reverse=True)]
+            # 使用排序后的元素对树进行填充
+            updateTree(orderItems, retTree, headerTable, count)
+    return retTree, headerTable
+
+
+def updateTree(items, inTree, headerTable, count):
+    '''
+    headerTable的格式为{key:[num,None]}即{项:[支持度计数,结点链]}
+
+    :param items:
+    :param inTree:
+    :param headerTable:
+    :param count:
+    :return:
+    '''
+    # 如果排序后列表的第一个元素(支持度计数最大的)是根节点的子节点
+    if items[0] in inTree.children:
+        # 增加这个结点的出现次数
+        inTree.children[items[0]].inc(count)
+    else:
+        # 创建根节点的子节点
+        inTree.children[items[0]] = treeNode(items[0],count, inTree)
+        # 如果这个结点在头指针表中还没有建立结点链，则建立结点链
+        if headerTable[items[0]][1] == None:
+            headerTable[items[0]][1] = inTree.children[items[0]]
+        # 如果已经建立，则更新结点链
+        else:
+            updateHeader(headerTable[items[0]][1], inTree.children[items[0]])
+    # 如果列表里还有元素
+    if len(items) > 1:
+        # 继续迭代更新FP树,每次调用时会去掉列表中第一个元素
+        updateTree(items[1::], inTree.children[items[0]], headerTable, count)
+
+
+# 更新头指针表的结点链接的函数
+def updateHeader(nodeToTest, targetNode):
+    # 将元素放在指针链表的最后
+    while(nodeToTest.nodeLink != None):
+        nodeToTest = nodeToTest.nodeLink
+    nodeToTest.nodeLink = targetNode
+
+
+# 发现以给定元素项结尾的所有路径的函数
+# 用于为给定元素项生成一个条件模式基，这通过访问树中所有包含给定元素项的结点来完成
+def ascendTree(leafNode, prefixPath):
+    # 如果结点的父节点不是None
+    if leafNode.parent != None:
+        # 将结点的名字添加到prefixPath列表中
+        prefixPath.append(leafNode.name)
+        # 迭代调用函数
+        ascendTree(leafNode.parent, prefixPath)
+
+
+def findPrefixPath(basePat, treeNode):
+    '''
+
+    :param basePat: 输入的频繁项
+    :param treeNode: 当前FP树中对应的第一个节点
+    :return:
+    '''
+    # 初始化条件模式基字典
+    condPats = {}
+
+    while treeNode != None:
+        prefixPath = []
+        # 回溯父节点，寻找前缀路径
+        ascendTree(treeNode, prefixPath)
+        # 如果路径长度大于一
+        if len(prefixPath) > 1:
+            # 条件模式基字典中该前缀路径的值为这个结点的计数值
+            condPats[frozenset(prefixPath[1:])] = treeNode.count
+        treeNode = treeNode.nodeLink
+    return condPats
+
+
+
+
+simpData = loadSimpleData()
+initSet = createInitSet(simpData)
+print(initSet)
