@@ -1,0 +1,299 @@
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*- 
+# @Time : 2019/1/27 10:19 
+# @Author : 路飞敲代码
+# @Site :  
+# @File : Apriori关联算法.py 
+# @Software: PyCharm
+
+
+
+def loadDataSet():
+    return [[1, 3, 4], [2, 3, 5], [1, 2, 3, 5], [2, 5]]
+
+
+def createC1(dataSet):
+    C1 = []
+    for transaction in dataSet:
+        for item in transaction:
+            if not [item] in C1:
+                C1.append([item])
+    C1.sort()
+    return list(map(frozenset, C1))
+
+
+def scanD(D, CK, minSupport):
+    '''
+    创建字典记录所有项集的数目，遍历所有的交易记录，再遍历项集，如果这个项集是这条记录的子集，
+    就把项集的数量加一，然后除以总的交易记录数得到这个项集的支持度，可以用一个字典记录，
+    key值为这个项集,值为这个项集的支持度，如果他大于最小支持度就把他添加到频繁项
+    集列表中
+    我要先得到所有项集的数目，再得到所有项集的支持度，然后进行判断，大于最小支持度
+    的判为频繁项集，放入频繁项集列表
+    :param D: 包含候选集合的列表
+    :param CK: 数据集
+    :param minSupport: 最小支持度
+    :return: 返回一个频繁项集组成的列表retList和各频繁项集的支持度
+    '''
+    # 记录所有项集的数目
+    ssCnt = {}
+    # 遍历候交易记录
+    for tid in D:
+        # 遍历候选项集
+        for can in CK:
+            # 如果这个项集是这条交易记录的子集
+            if can.issubset(tid):
+                # 如果字典中没有这一项集
+                if not can in ssCnt:
+                    # 置其值为一
+                    ssCnt[can] = 1
+                # 如果项集已在字典中
+                else:
+                    # 则其值加一
+                    ssCnt[can] += 1
+    # 得到交易记录数
+    numItems = float(len(D))
+    # L1初始化(频繁项集)
+    retList = []
+    # 记录频繁项集中各个数据的支持度
+    supportData = {}
+    # 遍历包含所有数据的字典
+    for key in ssCnt:
+        # 算出每一项的支持度
+        support = ssCnt[key] / numItems
+        # 如果大于最小支持度
+        if support >= minSupport:
+            # 将其添加到频繁项集中
+            retList.insert(0,key)
+        # 频繁项集的支持度
+        supportData[key] = support
+    return retList, supportData
+
+
+
+def aprioriGen(Lk, k):
+    '''
+    举例来说，该函数以{0}{1}{2}作为输入，会生成{0,1}{0,2}{1,2}
+    遍历频繁项集列表，如果列表中两个频繁项集的前k-2个元素相同，则把两个合并起来
+    可以得到一个k个元素的新的频繁项集
+    :param Lk: 频繁项集列表
+    :param k: 项集元素个数k
+    :return:
+    '''
+    retList = []
+    lenLk = len(Lk)
+    for i in range(lenLk):
+        for j in range(i+1, lenLk):
+            L1 = list(Lk[i])[:k-2]; L2 = list(Lk[j])[:k-2]
+            L1.sort()
+            L2.sort()
+            if L1 == L2:
+                retList.append(Lk[i] | Lk[j])
+    return retList
+
+
+def apriori(dataSet, minSupport=0.5):
+    '''
+    根据Ck得到Lk，Lk是有k个元素的频繁项集
+    :param dataSet:
+    :param minSupport:
+    :return:
+    '''
+    # 根据所给的数据集和最小支持度得到起初的频繁项集
+    C1 = createC1(dataSet)
+    D = list(map(set, dataSet))
+    L1, supportData = scanD(D, C1, minSupport)
+    L = [L1]
+    k = 2
+    # 不断循环，直到Lk频繁项集为空
+    while (len(L[k-2]) > 0):
+        # 用aprioriGen()函数创建Ck，即原来的小项集合并得到的大的候选项集列表
+        Ck = aprioriGen(L[k-2], k)
+        # 用scanD()函数由Ck得到Lk
+        Lk, supK = scanD(D, Ck, minSupport)
+        # 把得到的新的频繁项集及其支持度加到支持度字典中
+        supportData.update(supK)
+        # 把频繁项集添加到频繁项集列表中
+        L.append(Lk)
+        k += 1
+    return L, supportData
+
+# 关联规则生成
+'''
+频繁项集L的值前面提到过。我们在其中计算通过{2, 3, 5}生成的关联规则，可以发现关联规则{3, 5}➞{2}和{2, 3}➞{5}的可信度都应该为1.0的，
+因而也应该包括在当minConf = 0.7时的rules中——但是这在前面的运行结果中并没有体现出来。
+minConf = 0.5时也是一样，{3, 5}➞{2}的可信度为1.0，{2, 5}➞{3}的可信度为2/3，{2, 3}➞{5}的可信度为1.0，也没有体现在rules中。
+通过分析程序代码，我们可以发现：
+当i = 1时，generateRules()函数直接调用了calcConf()函数直接计算其可信度，因为这时L[1]中的频繁项集均包含两个元素，
+可以直接生成和判断候选关联规则。比如L[1]中的{2, 3}，生成的候选关联规则为{2}➞{3}、{3}➞{2}，这样就可以了。
+当i > 1时，generateRules()函数调用了rulesFromConseq()函数，这时L[i]中至少包含3个元素，
+如{2, 3, 5}，对候选关联规则的生成和判断的过程需要分层进行（图4）。这里，将初始的H1（表示初始关联规则的右部，即箭头右边的部分）
+作为参数传递给了rulesFromConseq()函数。
+例如，对于频繁项集{a, b, c, …}，H1的值为[a, b, c, …]（代码中实际为frozenset类型）。如果将H1带入计算可信度的calcConf()函数，
+在函数中会依次计算关联规则{b, c, d, …}➞{a}、{a, c, d, …}➞{b}、{a, b, d, …}➞{c}……的支持度，并保存支持度大于最小支持度的关联规则，
+并保存这些规则的右部（prunedH，即对H的过滤，删除支持度过小的关联规则）。
+当i > 1时没有直接调用calcConf()函数计算通过H1生成的规则集。在rulesFromConseq()函数中，首先获得当前H的元素数m = len(H[0])
+（记当前的H为Hm ）。当Hm可以进一步合并为m+1元素数的集合Hm+1时（判断条件：len(freqSet) > (m + 1)），依次：
+生成Hm+1：Hmpl = aprioriGen(H, m + 1)
+计算Hm+1的可信度：Hmpl = calcConf(freqSet, Hmpl, …)
+递归计算由Hm+1生成的关联规则：rulesFromConseq(freqSet, Hmpl, …)
+所以这里的问题是，在i>1时，rulesFromConseq()函数中并没有调用calcConf()函数计算H1的可信度，而是直接由H1生成H2，
+从H2开始计算关联规则——于是由元素数>3的频繁项集生成的{a, b, c, …}➞{x}形式的关联规则（图4中的第2层）均缺失了。
+由于代码示例数据中的对H1的剪枝prunedH没有删除任何元素，结果只是“巧合”地缺失了一层。正常情况下如果没有对H1进行过滤，直接生成H2，
+将给下一层带入错误的结果（如图4中的012➞3会被错误得留下来）。
+'''
+# 计算可信度
+def calcConf(freqSet, H, supportData, brl, minConf):
+    '''
+    针对每一个频繁项集，都有非空子集，然后针对非空子集，计算频繁项集中除非空子集
+    之外的元素对于非空子集的可信度
+    :param freqSet: 频繁项集
+    :param H: 出现在规则右侧的频繁项集
+    :param supportData: 频繁项集的支持度字典
+    :param brl: bigRulesList
+    :param minConf: 最小可信度阈值
+    :return: 满足最小可信度要求的规则列表
+    '''
+    # 保存关联规则的右部
+    prunedH = []
+    # 对于每个目标项集
+    for conseq in H:
+        # 计算当前目标项集在当前频繁项集上的可信度
+        conf = supportData[freqSet] / supportData[freqSet - conseq]
+        # 如果可信度不小于最小可信度
+        if conf >= minConf:
+            # 打印频繁项集
+            print(freqSet-conseq, '--->', conseq, conf)
+            # 将这条规则添加到规则列表中
+            brl.append((freqSet-conseq, conseq, conf))
+            prunedH.append(conseq)
+    return prunedH
+
+
+# 生成
+def rulesFromConseq(freqSet, H, supportData, brl, minConf=0.7):
+    '''
+    关联规则右侧的元素可以看成候选集，目的是得到其余元素对这些元素的可信度
+    所以可以从单个元素开始，生成具有更多元素的候选集，不断检验
+    根据当前的候选集H生成下一层候选集
+    :param freqSet: 项集
+    :param H: 可以出现在规则右侧的元素列表
+    :param supportData: 频繁项集支持度字典
+    :param brl: 关联规则
+    :param minConf: 最小可信度
+    :return:
+    '''
+    # 得到目标项集的长度，比如H= [frozenset({2}), frozenset({3}), frozenset({5})]，m=1
+    m = len(H[0])
+    # 如果当前项集元素的个数大于m+1，查看该频繁项集是否大到可以移除大小为m的子集
+    # 接着上面的例子，m+1=2，如果频繁项集的元素个数大于2，那么目标项集要变成有两个
+    # 元素的H
+    if len(freqSet) > (m + 1):
+        # 得到目标项集元素个数为m+1的目标项集Hmp1
+        Hmp1 = aprioriGen(H, m + 1)
+        # 有效目标集
+        Hmp1 = calcConf(freqSet, Hmp1, supportData, brl, minConf)
+        # 通过calcConf()函数得到一个包含满足要求的右侧元素的列表
+        # 如果满足要求的规则数目仍然大于一，用函数rulesFromConseq()判断是否可以进一步组合这些规则
+        if (len(Hmp1) > 1):
+            rulesFromConseq(freqSet, Hmp1, supportData, brl, minConf)
+
+
+
+def generateRules(L, supportData, minConf = 0.7):
+    '''
+    例如频繁项集X= {I1,I2,I5}，X的非空子集是{I1,I2}{I1,I5}{I2,I5}{I1}{I2}{I5},
+    可以产生关联规则{I1,I2}->{I5};{I1,I5}->{I2};{I2,I5}->{I1};{I1}->{I2,I5};
+    {I2}->{I1,I5};{I5}->{I1,I2}
+    L是一个由频繁项集构成的列表，选出其中的一个频繁项集，对这个频繁项集创建只包含单个元素
+    集合的列表H1，如果频繁项集的元素数目超过2，那么考虑对他做进一步合并
+    :param L: 频繁项集列表,其中频繁项集中元素个数从一个，两个。。。排列
+    :param supportData: 支持度字典
+    :param minconf: 最小支持度
+    :return: 包含可信度的规则列表
+    '''
+    bigRuleList = []
+    # 遍历频繁项集列表，i=0时的频繁项集元素只有一个，没法组成关联规则，所以要从
+    # i=1开始，里面有两个元素，比如{a,b}可以组成{a}->{b}和{b}->{a}的关联关系，
+    for i in range(1,len(L)):
+        # 对于频繁项集的每一项元素
+        for freqSet in L[i]:
+            # 将这些元素变成frozenset类型的元素比如，将{1,2,3}变成[frozenset{1},frozenset{2},frozenset{3}]
+            # 规则右侧的为单元素
+            H1 = [frozenset([item]) for item in freqSet]
+            # 如果频繁项集的元素数目由三个及三个以上，对规则右侧的元素做进一步的合并操作
+            if i > 1:
+                rulesFromConseq(freqSet, H1,supportData, bigRuleList, minConf)
+            # 如果项集中只有两个元素，那么可以直接使用calcConf()函数计算可信度
+            else:
+                calcConf(freqSet, H1, supportData, bigRuleList, minConf)
+    return bigRuleList
+
+
+# 当频繁项集的元素在三个及三个以上的时候，在generateRUles()函数中没有调用calcConf()
+# 计算H1(规则右侧只有一个元素，左侧是剩余元素)的可信度，直接就用rulesFromConseq()
+# 将H1拓展成H2，故会缺失{a,b,c}->{d}这类情况，所以要加上H1调用calcConf()来得到H1的
+# 满足要求的规则
+def generateRules2(L, supportData, minConf=0.7):
+    bigRuleLIst = []
+    for i in range(1,len(L)):
+        for freqSet in L[i]:
+            H1 = [frozenset([item]) for item in freqSet]
+            if i > 1:
+                H1 = calcConf(freqSet, H1, supportData, bigRuleLIst, minConf)
+                rulesFromConseq(freqSet, H1, supportData, bigRuleLIst, minConf)
+            else:
+                calcConf(freqSet, H1, supportData, bigRuleLIst, minConf)
+    return bigRuleLIst
+
+
+
+# 进一步修改，当i=1时else部分没有独特的逻辑，这个if语句可以合并，然后再修改rulesFromConseq()
+# 函数，保证会调用calcConf(freqSet, H1...)
+def generateRules3(L, supportData, minConf=0.7):
+    bigRuleList = []
+    for i in range(1,len(L)):
+        for freqSet in L[i]:
+            H1 = [frozenset([item]) for item in freqSet]
+            rulesFromConseq(freqSet, H1, supportData, bigRuleList, minConf)
+    return bigRuleList
+
+
+def rulesFromConseq2(freqSet, H, supportData, brl, minConf =0.7):
+    m = len(H[0])
+    if len(freqSet) > m:
+        Hmp1 = calcConf(freqSet, H, supportData, brl, minConf)
+        if len(Hmp1) > 1:
+            Hmp1 = aprioriGen(Hmp1, m + 1)
+            rulesFromConseq2(freqSet, Hmp1, supportData, brl, minConf)
+
+
+
+# 消除rulesFromConseq2()函数中的递归项。可以直接用一个循环替换
+def rulesFromConseq3(freqSet, H, supportData, brl, minConf=0.7):
+    m = len(H[0])
+    while len(freqSet) > m:
+        H = calcConf(freqSet, H, supportData, brl, minConf)
+        if len(H) > 1:
+            H = aprioriGen(H, m + 1)
+            m += 1
+        else:
+            break
+
+
+
+
+if __name__ == "__main__":
+    dataSet = loadDataSet()
+    L, suppData = apriori(dataSet)
+    i = 0
+    for one in L:
+        print("项数为 %s 的频繁项集: " % (i + 1), one, '\n')
+        i += 1
+
+
+    print("minConf=0.7时: ")
+    rules = generateRules(L, suppData, minConf=0.7)
+
+    print("\nminConf=0.5时: ")
+    rules = generateRules(L, suppData, minConf=0.5)
