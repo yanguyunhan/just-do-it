@@ -1,0 +1,177 @@
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*- 
+# @Time : 2019/1/24 16:57 
+# @Author : 路飞敲代码
+# @Site :  
+# @File : 推荐算法.py 
+# @Software: PyCharm
+
+
+'''
+首先是有一个用户-物品矩阵
+选出第一个商品和第二个商品中都被评分的项，各自组成一个向量，然后对这两个向量求
+相似度，
+'''
+from numpy import *
+from numpy import linalg as la
+# 构造简单数据
+def loadExData():
+    return [[1, 1, 1, 0, 0],
+            [2, 2, 2, 0, 0],
+            [1, 1, 1, 0, 0],
+            [5, 5, 5, 0, 0],
+            [1, 1, 0, 2, 2],
+            [0, 0, 0, 3, 3],
+            [0, 0, 0, 1, 1]]
+'''
+相似度计算函数，函数假定inA和inB都是列向量
+'''
+# 相似度计算用欧式距离并归一化
+def ecludSim(inA, inB):
+    return 1.0 / (1.0 + la.norm(inA - inB))
+
+# 相似度计算使用皮尔逊距离并归一化
+# 函数会检查是否存在三个或更多的点，如果不存在，该函数返回1.0，因为这时两个向量完全相同
+# corrcoef()用来计算皮尔逊相关系数，其值范围为-1到+1，然后将其归一化到0和1之间
+def pearsSim(inA, inB):
+    if len(inA) < 3:
+        return 1.0
+    return 0.5+0.5*corrcoef(inA, inB, rowvar = 0)[0][1]
+
+# 相似度计算使用余弦距离并归一化
+# norm()函数用来求范数，默认求二范数
+'''
+x_norm = np.linalg.norm(x, ord=None, axis=None, keepdims=False)
+ord表示范数类型
+默认或ord=2都表示二范数，即sqrt(sum(x**2)),
+ord=1表示一范数，即sum(abs(x)),
+ord=np.inf表示无穷范数，即max(abs(x))
+axis表示处理类型
+axis=1 表示按行向量处理，求多个行向量的范数
+axis=0 表示按列向量处理，求多个列向量的范数
+axis=None 表示矩阵范数
+keepding: 是否保持矩阵的二维特性，True表示保持矩阵的二维特性，False相反
+'''
+def cosSim(inA, inB):
+    num = float(inA.T * inB)
+    denom = la.norm(inA) * la.norm(inB)
+    return 0.5 + 0.5 * (num / denom)
+
+
+# 基于item的协同过滤
+def standEst(dataMat, user, simMeans, item):
+    '''
+    找到两列物品中重合都有评分的用户，这样会有两个向量，然后计算这两个向量之间
+    的相似度，相似度会不断累加，每次计算还考虑相似度和当前用户评分的乘积，然后
+    将其归一化到0和5之间，这些评分值用于对预测值进行排序
+    用来计算在给定相似度计算方法的条件下，用户对物品的估计评分值
+    我要看商品k是否可以推荐给用户，要得到商品k和其他商品之间的相似度，然后把相似度
+    作为权重，和评分相乘加权得到这个商品k的评分
+    :param dataMat: 数据矩阵，行对应用户，列对应物品
+    :param user: 用户编号
+    :param simMeans: 相似度计算方法
+    :param item: 物品编号
+    :return:
+    '''
+    # 物品数目为n
+    n = dataMat.shape[1]
+    #
+    simTotal = 0.0; ratSimTotal = 0.0
+    # 遍历所有物品
+    for j in range(n):
+        # 对于每样物品，构建用于对于这样物品的评分
+        userRating = dataMat[user, j]
+        # 如果用户对这样物品的评分为0，表示用户对该物品没有评分，跳过
+        if userRating == 0:
+            continue
+        # logical_and表示逻辑与
+        # dataMat[:, item]表示所给的物品编号这一列，dataMat[:, j]表示循环得到的这一列
+        # 用逻辑与得到这两列中值都大于0的元素所在行的索引组成的列表overLap
+        overLap = nonzero(logical_and(dataMat[:, item].A > 0, dataMat[:, j].A > 0))[0]
+        # 如果两者没有任何重合元素
+        if len(overLap) == 0:
+            #则相似度为0
+            similarity = 0
+        else:
+            # 用相似度计算方法计算所给物品编号这一列中不为0的元素组成的向量和循环的
+            # 这列中不为0的元素组成的向量，以此得到这j向量和所给向量之间的相似度
+            similarity = simMeans(dataMat[overLap, item],dataMat[overLap, j])
+        # 上面得到j和item列的相似度，然后将相似度不断相加，得到所有物品和item的相似度
+        simTotal += similarity
+        # 将相似度与用户评分相乘，得到每个用户对这个物品的评分,比如，
+        # 用户对物品B和C感兴趣，分数分别为b和c，而找到一个A与B和C相似，相似度分别为
+        # 0.4和0.8，则用户对A感兴趣的分数为0.4*b+0.8*c
+        ratSimTotal += similarity * userRating
+    #
+    if simTotal == 0:
+        return 0
+    else:
+        return ratSimTotal / simTotal
+
+
+
+def recommend(dataMat, user, N=3, simMeans=cosSim, estMethod=standEst):
+    '''
+    产生最高的N个推荐结果
+    :param dataMat: 用户-物品矩阵
+    :param user: 用户编号
+    :param N: 推荐结果个数
+    :param simMeans: 相似度计算方法
+    :param estMethod: 估计方法
+    :return:
+    '''
+    # 对给定的用户建立一个未评分的列表，得到列索引
+    unratedItems = nonzero(dataMat[user, :].A == 0)[1]
+    # 如果所有物品都有评分
+    if len(unratedItems) == 0:
+        return 'You rated everything'
+    # 初始化一个元素列表
+    itemScores = []
+    # 循环为评分物品列表
+    for item in unratedItems:
+        # 对其进行评分估计
+        estimatedScore = estMethod(dataMat, user, simMeans, item)
+        # 将物品和分数放入列表中
+        itemScores.append((item, estimatedScore))
+    # 对该列表用评分进行从大到小排序并得到前N个元素，即得到评分最高的前N个元素
+    return sorted(itemScores,key=lambda jj: jj[1], reverse=True)[:N]
+
+
+
+# 基于SVD的评分估计
+# SVD的时间复杂度为O(m^3),原矩阵缺省项较多，用其他值填补不合适
+def svdEst(dataMat, user, simMeans, item):
+    n = dataMat.shape[1]
+    simTotal = 0.0; ratSimTotal = 0.0
+    # 对矩阵进行SVD分解
+    U, Sigma, VT = la.svd(dataMat)
+    # eye(m)表示构造一个m*m的对角线元素为1，其余为0的array数组，然后用mat()转换为矩阵
+    # 构造一个4*4的矩阵来表示之前的完整矩阵的信息
+    Sig4 = mat(eye(4)*Sigma[:4])
+    # .I表示对矩阵求逆矩阵
+    # 构造出一个转换后的物品矩阵
+    xformedItems = dataMat.T * U[:,:4] * Sig4.I
+    for j in range(n):
+        # 得到一个用户和物品的评分矩阵
+        userRating = dataMat[user, j]
+        # 如果用户评分为0或者循环到的这个物品和所给定的物品相同，则跳过
+        if userRating == 0 or j == item:
+            continue
+        # 计算item与j两向量之间的相似度
+        similarity = simMeans(xformedItems[item, :].T, xformedItems[j, :].T)
+        print('the %d and %d similarity is: %f' % (item, j, similarity))
+        #
+        simTotal += similarity
+        ratSimTotal += similarity * userRating
+    if simTotal == 0: return 0
+    else:
+        return ratSimTotal / simTotal
+
+
+
+'''
+隐语义模型
+更好的挖掘用户和物品的隐藏关系,都是从几个角度进行分析，一个是用户-角度，一个是物品-角度
+假定有U个用户，D个物品，R为打分矩阵，假定有K个隐含变量(角度)，我们需要找到
+矩阵P(U*K)和Q(D*K)使得R约等于P*Q.T，然后用梯度下降去找
+'''
