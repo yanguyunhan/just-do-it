@@ -1,0 +1,168 @@
+import numpy as np
+from math import log
+import operator
+# 决策树构造
+
+
+# 计算给定数据集的香农熵,统计各类别的频率，根据公式计算熵
+def calentropy(dataset):
+    numentropy = len(dataset)
+    labelcounts = {}
+    for featvec in dataset:
+        currentlabel = featvec[-1]
+        if currentlabel not in labelcounts.keys():
+            labelcounts[currentlabel] = 0
+        labelcounts[currentlabel] += 1
+    sahnnonent = 0.0
+    for key in labelcounts:
+        prob = float(labelcounts[key]) / numentropy
+        #if prob > 0 and prob != 1:
+        sahnnonent -= prob * log(prob, 2)
+    return sahnnonent
+
+
+# 把数据集中的一个特征按值的不同取成几个子集，每个子集中包括除这个特征之外的其余特征的值
+def splitdataset(dataset, axis, value):
+    retdataset = []
+    for featvec in dataset:
+        if featvec[axis] == value:
+            reducedfeatvec = featvec[:axis]
+            reducedfeatvec.extend(featvec[axis+1:])
+            retdataset.append(reducedfeatvec)
+    return retdataset
+
+
+# 选择最佳的数据划分方式
+def choosebestfeaturetosplit(dataset):
+    numfeatures = len(dataset[0]) - 1
+    baseentropy = calentropy(dataset)
+    bestinfogain = 0.0
+    bestfeature = -1
+    # 对每个特征进行循环
+    for i in range(numfeatures):
+        # 将dataSet中的数据先按行依次放入example中，然后取得example中的example[i]元素，放入列表featList中
+        # 得到不同特征的集合
+        featlist = [example[i] for example in dataset]
+        uniquevals = set(featlist)
+        newentropy = 0.0
+        # 对每个特征，把它的每个值进行熵的计算,然后按概率相加
+        for value in uniquevals:
+            # 把这个特征按值的不同分为几个组
+            subdataset = splitdataset(dataset, i, value)
+            # 计算这几个不同值所占的概率
+            prob = len(subdataset) / float(len(dataset))
+            # 根据这个特征得到的信息熵=每个值的熵相加
+            newentropy += prob * calentropy(subdataset)
+        # 计算信息增益并比较得出具有最大增益的特征
+        # 先得到一个信息增益，如果后面的循环得到更大的增益，则把最佳特征给到这个特征，如果没有，则目前的特征为最佳特征
+        infogain = baseentropy - newentropy
+        if infogain > bestinfogain:
+            bestinfogain = infogain
+            bestfeature = i
+    return bestfeature
+
+
+# 返回最多数量的特征
+def majoritycnt(classlist):
+    classcount = {}
+    for vote in classlist:
+        if vote not in classcount.keys():
+            classcount[vote] = 0
+        classcount[vote] += 1
+    sortedclasscount = sorted(classcount.items(), key=operator.itemgetter(1), reverse=True)
+    # 得到一个根据特征值对应的相同值的次数排序的字典第一个[0]得到字典，第二个[0]得到key值
+    return sortedclasscount[0][0]
+
+
+# 递归构建决策树
+def createtree(dataset, labels):
+    # 得到类的列表
+    classlist = [example[-1] for example in dataset]
+    # classlist列表的第一个元素的个数和整个列表的长度一致，表示所有的类标签完全相同，返回该类标签，作为叶节点
+    if classlist.count(classlist[0]) == len(classlist):
+        return classlist[0]
+    # 递归停止的第二个条件，即判断是否所有特征值已经用完，可判断数据集中列表元素是否唯一，
+    # 即只剩下类别元素，（dataset中的元素是列表）
+    # dataset的元素是由特征和类别构成的列表，下面的del操作会删掉一个特征，如果长度为一，表明特征都已用完，只剩下类别
+    if len(dataset[0]) == 1:
+        return majoritycnt(classlist)
+    # 挑选最佳划分数据集的特征和对应的类标签
+    bestfeat = choosebestfeaturetosplit(dataset)
+    bestfeatlabel = labels[bestfeat]
+    # 初始化一个树的信息结构
+    mytree = {bestfeatlabel: {}}
+    # 把上一步选最佳特征对应的标签删除掉，即剩下其他类标签，得到子集
+    del(labels[bestfeat])
+    # 得到在剩下的子集中不同的特征的集合
+    featvalues = [example[bestfeat] for example in dataset]
+    uniquevals = set(featvalues)
+    # 对这些剩下的特征值进行遍历来构造子树
+    for value in uniquevals:
+        sublabels = labels[:]
+        mytree[bestfeatlabel][value] = createtree(splitdataset(dataset, bestfeat, value), sublabels)
+    return mytree
+
+# 画出决策树
+
+
+# 决策树分类函数
+def classify(inputtree, featlabels, testvec):
+    firststr = list(inputtree.keys())[0]
+    seconddict = inputtree[firststr]
+    featindex = featlabels.index(firststr)
+    for key in seconddict.keys():
+        if testvec[featindex] == key:
+            if type(seconddict[key]).__name__ == 'dict':
+                classlabel = classify(seconddict[key], featlabels, testvec)
+            else:
+                classlabel = seconddict[key]
+    return classlabel
+
+
+# 带入数据，构建具体的决策树
+def load_dataset(filename, lenseslabels):
+    fr = open(filename)
+    lenses = [inst.strip().split('\t') for inst in fr.readlines()]
+    # lenseslabels = ['age', 'prescript', 'astigmatic', 'tear_rate']
+    lensestree = createtree(lenses, lenseslabels)
+    return lensestree, lenseslabels
+
+# 检验决策树的效果
+def createdataset():
+    dataset = [[1, 1, 'yes'],
+               [1, 1, 'yes'],
+               [1, 0, 'no'],
+               [0, 1, 'no'],
+               [0, 1, 'no']]
+    labels = ['no surfacing', 'flippers']
+    return dataset, labels
+
+
+
+filename = "D:/机器学习实战/machinelearninginaction/Ch03/lenses.txt"
+fr = open(filename)
+lenses = [inst.strip().split('\t') for inst in fr.readlines()]
+lenseslabels = ['age', 'prescript', 'astigmatic', 'tear_rate']
+lensestree = createtree(lenses, lenseslabels)
+print(lensestree)
+lenseslabels = ['age', 'prescript', 'astigmatic', 'tear_rate']
+# lensestree, lenseslabels = load_dataset(filename, lenseslabels)
+testvec = ('young', 'myope', 'no', 'reduced')
+classlabel = classify(lensestree, lenseslabels, testvec)
+print(classlabel)
+# lenseslabels = ['age', 'prescript', 'astigmatic', 'tear_rate']
+# fitststr = list(lensestree.keys())[0]
+# print(type(fitststr))
+# print(str(fitststr))
+# featindex = lenseslabels.index('time')
+# print(featindex)
+
+# mydat, labels = createdataset()
+# print(labels)
+# mytree = createtree(mydat, labels)
+# print(mytree)
+#print(labels)
+# labels = ['no surfacing', 'flippers']
+# classlabel = classify(mytree, labels, [1, 0])
+# print(classlabel)
+# def classify(inputtree, featlabels, testvec):
