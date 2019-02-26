@@ -1,0 +1,241 @@
+from math import log
+from numpy import *
+
+# 词表到向量的转换函数
+def loaddataset():
+    postinglist = [['my', 'dog', 'has', 'flea', 'problems', 'help', 'please'],
+                   ['maybe', 'not', 'take', 'him', 'to', 'dog', 'park', 'stupid'],
+                   ['my', 'dalmation', 'is', 'so', 'cute', 'I', 'love', 'him'],
+                   ['stop', 'posting', 'stupid', 'worthless', 'garbage'],
+                   ['mr', 'licks', 'ate', 'my', 'steak', 'how', 'to', 'stop', 'him'],
+                   ['quit', 'buying', 'worthless', 'dog', 'food', 'stupid']]
+    # 1表示侮辱性文字，0表示正常言论
+    classvec = [0,1,0,1,0,1]
+    return postinglist, classvec
+
+
+# 创建一个包含所有不重复词的列表
+def createVocabList(dataset):
+    vocabset = set([])
+    for document in dataset:
+        vocabset = vocabset | set(document)
+    return list(vocabset)
+
+
+# 先创建一个值全为0的与词汇表等长的列表，然后遍历文档向量，属于词汇表，列表值赋予1，反之赋予0
+def setOfWords2Vec(vocablist, inputset):
+    returnvec = [0] * len(vocablist)
+    for word in inputset:
+        if word in vocablist:
+            returnvec[vocablist.index(word)] = 1
+        else:
+            print("the word: %s is not in my vocabulary!" % word)
+    return returnvec
+
+
+# 朴素贝叶斯训练函数,得到p(w|c0),p(w|c1)和p(c0),p(c1)
+# 用的是包含所有文档中的所有不重复词的词汇表，初值都赋予0，遍历不同类别的文档，遍历文档内容，如果出现这个词，
+# 就把词汇表中这个词的值加一，然后除以这个类别文档所有的侮辱词数，得到在侮辱文档中每个侮辱词的概率和在正常文档中侮辱词的
+# 概率，
+def trainNB0(trainmatrix, traincategory):
+    # 得到文档向量的数量
+    numtraindocs = len(trainmatrix)
+    # 得到一个文档向量的包含的词汇数量
+    numwords = len(trainmatrix[0])
+    # 相加词汇向量的总值，得到p(c1),之后可以用1-p(c1)得到p(c0)
+    pabusive = sum(traincategory) / float(numtraindocs)
+    p0num = ones(numwords); p1num = ones(numwords)
+    p0denom = 2.0; p1denom = 2.0
+    # 循环文档，对每个文档进行计算
+    for i in range(numtraindocs):
+        # 对于侮辱类文档
+        if traincategory[i] == 1:
+            # 这个词汇的数量加一，p1num是不重复词组成的列表，文档矩阵中每一个元素是这边文档对应的词汇表向量，
+            # 两个表中的索引代表的词汇是一样的，通过两列表相加，可以得到词汇表中每个词在这类的所有文档中的数量
+            # p1denom是一个数，把每篇文档用到的词数加起来可以得到这个类别文档中所有词汇的数量
+            # 这一步可以得到p(w and c1)的概率值，然后除以p(c1)的值得到p(w|c1)
+            p1num += trainmatrix[i]
+            # 侮辱类别文档中所有词汇的数量加一
+            p1denom += sum(trainmatrix[i])
+        else:
+            # 这个词汇的数量加一
+            p0num += trainmatrix[i]
+            # 正常类别文档所有词汇的数量加一篇文档的词汇数量
+            p0denom += sum(trainmatrix[i])
+    # 得到条件概率p(w|c1)
+    p1vect = log(p1num / p1denom)
+    # 得到条件概率p(w|c0)
+    p0vect = log(p0num / p0denom)
+    return p0vect, p1vect, pabusive
+
+
+# if  __name__ == '__main__':
+#     postingList, classVec = loaddataset()
+#     myVocablist = createVocabList(postingList)
+#     print('myVocablist:\n', myVocablist)
+#     trainMat = []
+#     for postingDoc in postingList:
+#         trainMat.append(setOfWords2Vec(myVocablist, postingDoc))
+#     p0V, p1V, pAb = trainNB0(trainMat, classVec)
+#     print('p0V:\n', p0V)
+#     print('p1V:\n', p1V)
+#     print('classVec:\n', classVec)
+#     print('pAb:\n', pAb)
+
+
+# 利用trainNB0()函数得到的三个概率值得到最后的条件概率log(p(c|w)),然后比较两类概率值，进行类别判断
+# 用对数函数把p(w|c1)p(c1)变成log(p(w|c1)) + log(p(c1))
+# vecclassify 已经通过setOfWords2Vec函数转成词汇向量
+# trainNB0得到的每个词汇w的条件概率，朴素贝叶斯假设词独立同分布，p(w|c1)=p(w1|c1)p(w2|c1)p(w3|c1)...变成对数函数，
+# 等于p(w1|c1)+p(w2|c1)+p(w3|c1)+...
+def classifyNB(vec2classify, p0Vec, p1Vec, pClass1):
+    p1 = sum(vec2classify * p1Vec) + log(pClass1)
+    p0 = sum(vec2classify * p0Vec) + log(1.0 - pClass1)
+    if p1 > p0:
+        return 1
+    else:
+        return 0
+
+
+# 将前面的几个函数进行整合,对留言内容进行分类
+def testingNB():
+    listOPosts, listClasses = loaddataset()
+    myVocablist = createVocabList(listOPosts)
+    trainMat = []
+    for postingDoc in listOPosts:
+        trainMat.append(setOfWords2Vec(myVocablist, postingDoc))
+    p0V, p1V, pAb = trainNB0(array(trainMat), array(listClasses))
+    testEntry = ['love', 'my', 'dalmation']
+    thisDoc = array(setOfWords2Vec(myVocablist, testEntry))
+    print(testEntry, 'classified as: ', classifyNB(thisDoc, p0V, p1V, pAb))
+    testEntry = ['stupid', 'garbage']
+    thisDoc = array(setOfWords2Vec(myVocablist, testEntry))
+    print(testEntry, 'classified as: ', classifyNB(thisDoc, p0V, p1V,pAb))
+
+
+
+def bagOfWords2VecMN(vocabList, inputSet):
+    returnVec = [0] * len(vocabList)
+    for word in inputSet:
+        if word in vocabList:
+            returnVec[vocabList.index(word)] += 1
+    return returnVec
+
+
+# 进行文本解析
+def textParse(bigString):
+    import re
+    listOfTokens = re.split(r'\W*', bigString)
+    return [tok.lower() for tok in listOfTokens if len(tok) > 2]
+
+
+
+# 垃圾邮件测试函数
+def  spamTest():
+    docList = []; classList = []; fullText = []
+    # 遍历文件，将文档分别归到1和0 两类，最后得到三个列表，classList里面应该是0,1,0,1.。。。的排列
+    # fullText得到的是所有邮件的文字内容
+    for i in range(1,26):
+        wordList = textParse(open('D:/ML/spam/%d.txt' % i, encoding='gb18030', errors='ignore').read())
+        # 之后用作得到不重复词表
+        docList.append(wordList)
+        # 之后用作待检验的文档向量组成的列表
+        fullText.extend(wordList)
+        classList.append(1)
+        wordList = textParse(open('D:/ML/ham/%d.txt' % i, encoding='gb18030', errors='ignore').read())
+        docList.append(wordList)
+        fullText.extend(wordList)
+        classList.append(0)
+    vocabList = createVocabList(docList)
+    #trainingSet是一个整数组成的列表
+    trainingSet = list(range(50)); testSet = []
+    # 一次随机选择一份文档，添加到测试集，并从训练集中删掉，这里添加和删除的都是邮件所在的位置索引，所以训练集测试集都是一个整数的列表
+    for i in range(10):
+        randIndex = int(random.uniform(0,len(trainingSet)))
+        testSet.append(trainingSet[randIndex])
+        del(trainingSet[randIndex])
+    # 把文档变成词向量，然后把向量添加到一个列表中
+    trainMat = [];trainClasses = []
+    for docIndex in trainingSet:
+        trainMat.append(setOfWords2Vec(vocabList, docList[docIndex]))
+        trainClasses.append(classList[docIndex])
+    # 计算分类所需的概率
+    p0V, p1V, pSpam = trainNB0(array(trainMat), array(trainClasses))
+    #遍历测试集，对每封邮件进行分类
+    errorCount = 0
+    for docIndex in testSet:
+        wordVector = setOfWords2Vec(vocabList, docList[docIndex])
+        if classifyNB(array(wordVector), p0V, p1V, pSpam) != classList[docIndex]:
+            errorCount += 1
+    print('the error rate is: ', float(errorCount) / len(testSet))
+
+
+
+
+#
+
+
+def calcMostFreq(vocabList, fullText):
+    import operator
+    freqDict = {}
+    for token in vocabList:
+        freqDict[token] = fullText.count(token)
+    sortedFreq = sorted(freqDict.items(), key=operator.itemgetter(1), reverse=True)
+    return sortedFreq[:30]
+
+
+def localWords(feed1,feed0):
+    import feedparser
+    docList = []; classList = []; fullText = []
+    minLen = min(len(feed1['entries']), len(feed0['entries']))
+    for i in range(minLen):
+        wordList = textParse(feed1['entries'][i]['summary'])
+        docList.append(wordList)
+        fullText.extend(wordList)
+        classList.append(1)
+        wordList = textParse(feed0['entries'][i]['summary'])
+        docList.append(wordList)
+        fullText.extend(wordList)
+        classList.append(0)
+    vocabList = createVocabList(docList)
+    top30words = calcMostFreq(vocabList, fullText)
+    for pairW in top30words:
+        if pairW[0] in vocabList:
+            vocabList.remove(pairW[0])
+    trainingSet = range(2*minLen); testSet = []
+    for i in range(20):
+        randIndex = int(random.uniform(0,len(trainingSet)))
+        testSet.append(trainingSet[randIndex])
+        del(trainingSet[randIndex])
+    trainMat = []; trainClasses = []
+    for docIndex in trainingSet:
+        trainMat.append(bagOfWords2VecMN(vocabList, docList[docIndex]))
+        trainClasses.append(classList[docIndex])
+    p0V, p1V, pSam = trainNB0(array(trainMat), array(trainClasses))
+    errorCount = 0
+    for docIndex in testSet:
+        wordVector = bagOfWords2VecMN(vocabList, docList[docIndex])
+        if classifyNB(wordVector, p0V, p1V, pSam) != classList[docIndex]:
+            errorCount += 1
+    print('the error rate is: ', float(errorCount) / len(testSet))
+    return vocabList, p0V, p1V
+
+
+
+def getTopWords(ny, sf):
+    import operator
+    vocabList, p0V, p1V = localWords(ny, sf)
+    topNY = []; topSF = []
+    for i in range(len(p0V)):
+        if p0V[i] > -6.0:
+            topSF.append((vocabList[i], p0V[i]))
+        if p1V[i] > -6.0:
+            topNY.append((vocabList[i], p1V[i]))
+    sortedSF = sorted(topSF, key=lambda pair: pair[1],reverse=True)
+    print("SF**SF**SF**SF**SF**SF**SF**SF**SF**SF**SF**SF**SF**SF**SF**")
+    for item in sortedSF:
+        print(item[0])
+    sortedNY = sorted(topNY, key=lambda pair: pair[1],reverse=True)
+    print("NY**NY**NY**NY**NY**NY**NY**NY**NY**NY**NY**NY**NY**NY**NY**")
+    for item in sortedNY:
+        print(item[0])
